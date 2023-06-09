@@ -10,6 +10,7 @@ https://git-scm.com/book/en/v2/Git-on-the-Server-The-Protocols The Git Protocol 
 
 git clone git://example.com/project.git
 """
+import argparse
 import dataclasses
 import os
 import pathlib
@@ -21,8 +22,7 @@ import logutil
 
 logger = logutil.get_logger(__name__)
 
-# 当前工作目录的父文件夹
-repo_root: pathlib.Path = pathlib.Path(os.getcwd()).resolve().parent
+repo_root: t.Optional[pathlib.Path] = None
 
 
 @dataclasses.dataclass
@@ -94,14 +94,14 @@ class GitTransportHandler(socketserver.StreamRequestHandler):
         version = None
         for param in git_request.extra_parameters:
             if param.startswith(b"version="):
-                version = int(param[len(b"version=") :].decode())
+                version = int(param[len(b"version="):].decode())
 
         env = None
         if version is not None:
             env = {"GIT_PROTOCOL": f"version={version}"}
             # 继承现有进程的环境变量
             env.update(os.environ)
-        popen_args = ["git", git_request.command[len("git-") :], str(repo_path)]
+        popen_args = ["git", git_request.command[len("git-"):], str(repo_path)]
         popen = subprocess.Popen(
             popen_args,
             stdin=self.rfile,
@@ -176,7 +176,7 @@ class GitTransportHandler(socketserver.StreamRequestHandler):
                 self.exit_session(b"Invalid request host param\n")
                 return
             host_parts = host_param.split(":", 1)
-            hostname = host_parts[0][len(prefix) :]
+            hostname = host_parts[0][len(prefix):]
             if len(host_parts) > 1:
                 port = int(host_parts[1])
         else:
@@ -196,11 +196,21 @@ class GitTransportHandler(socketserver.StreamRequestHandler):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--directory', '-d', default=os.getcwd(),
+                        help='Specify git repo root directory '
+                             '[default:current directory]')
+    args = parser.parse_args()
+
+    global repo_root
+    repo_root = pathlib.Path(args.directory).resolve()
+
     host = "127.0.0.1"
-    port = 9418
+    port = 8004
     server_address = (host, port)
     server = socketserver.TCPServer(server_address, GitTransportHandler)
     logger.info("Listen at %s:%s", host, port)
+    logger.info("Git serve directory: %s", str(repo_root))
     server.serve_forever()
 
 
