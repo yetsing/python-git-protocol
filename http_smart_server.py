@@ -1,7 +1,9 @@
 import abc
+import argparse
 import collections
 import gzip
 import itertools
+import os
 import pathlib
 import socket
 import subprocess
@@ -186,7 +188,7 @@ def try_utf8_decode(b: bytes) -> t.Union[str, bytes]:
         return b
 
 
-def iochunker_copy(src: t.BinaryIO, dst: t.BinaryIO, chunk_size: int = 32768):
+def iochunker_copy(src: t.IO, dst: t.IO, chunk_size: int = POPEN_READ_SIZE):
     """
     每次从 src 中读取 chunk_size 大小数据，写入 dst ，直至读取完 src 全部数据。
 
@@ -345,7 +347,7 @@ class GitApplication:
         empty, repo_name, remainder = request.path_info.split("/", 2)
         if repo_name.endswith(".git"):
             repo_name = repo_name[: -len(".git")]
-        repo_path = self.content_path / repo_name / ".git"
+        repo_path = self.content_path / repo_name
         repo_path = repo_path.resolve()
         logger.info(
             "request repo: %s, path_info: %s, accept: %s", str(repo_path), request.path_info, request.accept,
@@ -366,13 +368,19 @@ class GitApplication:
 
 
 def main():
-    # 当前工作目录的父文件夹
-    repo_root: pathlib.Path = pathlib.Path.cwd().resolve().parent
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--directory', '-d', default=os.getcwd(),
+                        help='Specify git repo root directory '
+                             '[default:current directory]')
+    args = parser.parse_args()
+
+    repo_root = pathlib.Path(args.directory).resolve()
     app = GitApplication(repo_root)
     host = "127.0.0.1"
-    port = 18000
+    port = 8002
     server = make_server(host, port, app)
     logger.info("Listen at %s:%s", host, port)
+    logger.info("Git serve directory: %s", args.directory)
     server.serve_forever()
 
 
